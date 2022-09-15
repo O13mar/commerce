@@ -2,6 +2,11 @@
 
 {% block body %}
 <div class="container">
+{% if not listing.isactive %}
+    <h1>
+        closed list by it owner {{ listing.user }}
+    </h1>
+{% endif %}
    {% if message %}
       {% if updated %}
          <div class="alert alert-success" role="alert">
@@ -23,8 +28,8 @@
       
 
 <div class="row" mx-3 >
-   {% if user.is_authenticated and listing.isactive %}
-      {% if is0wner %}
+   {% if user.is_authenticated  %}
+      {% if owner and listing.isactive%}
          <form action="{% url 'closeAuction' id=listing.id %}" method="POST">
             {% csrf_token %}
             <button type="submit" class="btn btn-danger">Close Auction</button>
@@ -32,14 +37,14 @@
          </form>
 
       {% endif %}
-      {% if isListingInwatchlist %}
-         <form action="{% url 'removeWatchlist' id=listing.id %}" method="POST">
+      {% if onwatch %}
+         <form action="{% url 'updateWatchlist' id=listing.id %}" method="POST">
             {% csrf_token %}
             <button type="submit" class="btn btn-danger">Remove from Watchlist</button>
 
          </form>
       {% else %}
-         <form action="{% url 'addWatchlist' id=listing.id %}" method="POST">
+         <form action="{% url 'updateWatchlist' id=listing.id %}" method="POST">
             {% csrf_token %}
             <button type="submit" class="btn btn-success">Add To Watchlist</button>
 
@@ -53,15 +58,15 @@
     <h2>item :{{listing.title}}</h2>
     <img src="{{listing.imageurl}}" alt="{{listing.title}}" height="200px">
     <p>{{liating.description}}</p>
-    <p>Owner:{{listing.owner}}</p>
-    <h6>${{listing.price.bid}}</h6>
-
-    {% if user.is_authenticated  %}
+    <p><h5>Owner:{{listing.user}}</h5></p>
+    <h6>${{listing.price}} {% if winner %}by<span style="color: mediumblue"> {{ winner }} the winner</span> {% endif %}</h6>
+    <br>
+    {% if user.is_authenticated and listing.isactive  %}
     <form action="{% url 'addBid' id=listing.id %}" method="POST">
       {% csrf_token %}
       <div class="form-group">
          <label for="price" >Add Bid</label>
-         <input type="number" min="0" name="newBid"   placeholder="Add New Bid">
+         <input type="number" min="{{ listing.price  }}" name="newBid"   placeholder="Add New Bid">
          <button type="submit" class="btn btn-primary">Add</button>
       </div>
       
@@ -73,8 +78,9 @@
 
     <div class="row mx-3">
          <h2>Comments</h2>
-         {% if user.is_authenticated %}
-         <form action="{% url 'addcomment' id=listing.id %}" method="POST">
+    <br>
+         {% if user.is_authenticated and listing.isactive%}
+         <form action="{% url 'addcomment' listing.id %}" method="POST">
             {% csrf_token %}
             <div class="form-group">
                <label for="price" >Add Comments</label>
@@ -93,7 +99,7 @@
                <li class="list-group-item">
                   {{comment.message}}
                   <br/>
-                  <p>{{comment.author}}</p>
+                  <p> <span style="color: blue">by</span> {{comment.author}}</p>
                </li>
                
 

@@ -1,170 +1,166 @@
-#from unicodedata import category
+# from unicodedata import category
 from django.contrib.auth import authenticate, login, logout
 from django.db import IntegrityError
 from django.http import HttpResponse, HttpResponseRedirect
-from django.shortcuts import render
+from django.shortcuts import render, redirect
 from django.urls import reverse
+from .forms import listForm
 
-from .models import User,Category,Listings,Comment,Bid
-
-
-def listing(request,id):
-    listingData=Listings.objects.get(pk=id)
- 
-    isListingInwatchlist=request.user in listingData.watchlist.all()
-    allComments=Comment.objects.filter(listing=listingData)
-    is0wner=request.user.username == listingData.owner.username
-    return render(request,"auctions/listing.html",{
-        "listing":listingData,
-        "isListingInWatchlist":isListingInwatchlist,
-        "allComments":allComments,
-        "is0wner":is0wner
-    })
-
-def closeAuction(request,id):
-    listingData=Listings.objects.get(pk=id)
-    listingData.isactive=False
-    listingData.save()
-    isListingInwatchlist=request.user in listingData.watchlist.all()
-    allComments=Comment.objects.filter(listing=listingData)
-    is0wner=request.user.username == listingData.owner.username
-    return render(request,"auctions/listing.html",{
-        "listing":listingData,
-        "isListingInWatchlist":isListingInwatchlist,
-        "allComments":allComments,
-        "update":True,
-        "is0wner":is0wner,
-        "message":"Congratulation your auctions is closed"
-    })
+from .models import User, Category, Listings, Comment, Bid, Watchlist
 
 
-def addBid(request,id):
-    newBid=request.POST['newBid']
-    listingData=Listings.objects.get(pk=id)
-    isListingInwatchlist=request.user in listingData.watchlist.all()
-    allComments=Comment.objects.filter(listing=listingData)
-    is0wner=request.user.username ==listingData.owner.username
-    if int(newBid) > listingData.price:
-        updateBid=Bid(user=request.user,bid=int(newBid))
-        updateBid.save()
-        listingData.price=updateBid
-        listingData.save()
-        return render (request,"auctions/listing.html",{
-            "listing":listingData,
-            "message":"Bid was updated successfully",
-            "update":True,
-            "isListingInWatchlist":isListingInwatchlist,
-            "allComments":allComments,
-            "is0wner":is0wner
-        })
-        
+def listing(request, id):
+    listingData = Listings.objects.get(pk=id)
+    allComments = Comment.objects.filter(listing=listingData.id).all()
+    if not listingData.isactive:
+        winner = Bid.objects.filter(list=listingData).last().user.username
     else:
-        return render (request,"auctions/listing.html",{
-            "listing":listingData,
-            "message":"Bid was updated failed",
-            "update":False,
-            "isListingInWatchlist":isListingInwatchlist,
-            "allComments":allComments,
-            "is0wner":is0wner
-        })
+        winner = None
+    try:
+        list = Watchlist.objects.filter(
+            user=request.user,
+            list=id
+        )
+    except:
+        list = None
+
+    onwatch = True if list else False
+    owner = True if request.user == listingData.user else False
+    return render(request, "auctions/listing.html", {
+        "listing": listingData,
+        "allComments": allComments,
+        'onwatch': onwatch,
+        'owner': owner,
+        'winner':winner
+
+    })
 
 
+def closeAuction(request, id):
+    listingData = Listings.objects.get(pk=id)
+    listingData.isactive = False
+    listingData.save()
+    allComments = Comment.objects.filter(listing=listingData).all()
 
-def addcomment(request,id):
-    currentUser=request.user
-    listingData=Listings.objects.get(pk=id)
-    message=request.POST['newComment']
+    return render(request, "auctions/listing.html", {
+        "listing": listingData,
+        "allComments": allComments,
+        "update": True,
+        "message": "Congratulation your auctions is closed"
+    })
 
-    newComment=Comment(
-        author= currentUser,
+
+def addBid(request, id):
+    newBid = request.POST['newBid']
+    newBid = float(newBid)
+    list = Listings.objects.get(id=id)
+
+    if newBid > list.price:
+        obj = Bid.objects.create(
+            user=request.user,
+            list=list,
+            bid=newBid
+        )
+        obj.save()
+        list.price = newBid
+        list.save()
+        return redirect("listing", list.id)
+    else:
+        context = {
+            "listing": list,
+            "updated": False,
+            "allComments": Comment.objects.filter(listing=list.id).all()
+        }
+        return render(request, "auctions/listing.html", context)
+
+
+def addcomment(request, id):
+    currentUser = request.user
+    listingData = Listings.objects.get(pk=id)
+    message = request.POST['newComment']
+
+    newComment = Comment(
+        author=currentUser,
         listing=listingData,
         message=message
     )
     newComment.save()
-    return HttpResponseRedirect(reverse("listing",args=(id, )))
-        
+    return HttpResponseRedirect(reverse("listing", args=(id,)))
+
 
 def watchlist(request):
-    currentUser=request.user
-    listings= currentUser.listingWatchlist.all()
-    return render (request,"auctions/watchlist.html",
-    {
-           "listing":listings
-    })
+    list = Watchlist.objects.filter(
+        user=request.user
+    ).all()
+    return render(request, "auctions/watchlist.html",
+                  {
+                      "listing": list
+                  })
 
 
-def removeWatchlist(request,id):
-    listingData=Listings.objects.get(pk=id)
-    currentUser=request.user
-    listingData.watchlist.remove(currentUser)
-    return HttpResponseRedirect(reverse("listing",args=(id, )))
+def updateWatchlist(request, id):
+    subList = Listings.objects.get(id=id)
+    listing = Watchlist.objects.filter(user=request.user).all()
+    try:
+        list = Watchlist.objects.filter(
+            user=request.user,
+            list=subList
+        )
+    except:
+        list = None
 
+    if list:
+        list.delete()
 
-def addWatchlist(request,id):
-    listingData=Listings.objects.get(pk=id)
-    currentUser=request.user
-    listingData.watchlist.add(currentUser)
-    return HttpResponseRedirect(reverse("listing",args=(id, )))
-
-
-
-
-
+        allcategories = Category.objects.all()
+        activelisting = Listings.objects.filter(isactive=True).all()
+        return render(request, "auctions/index.html", context={
+            "listing": activelisting,
+            "categories": allcategories
+        })
+    else:
+        obj = Watchlist.objects.create(
+            user=request.user,
+            list=subList
+        )
+        obj.save()
+        return render(request, "auctions/watchlist.html", context={
+            "listing": listing
+        })
 
 
 def index(request):
-    allcategories=Category.objects.all()
-    activelisting=Listings.objects.filter(isactive=True)
+    allcategories = Category.objects.all()
+    activelisting = Listings.objects.filter(isactive=True).all()
     return render(request, "auctions/index.html",
-    { "listing":activelisting,
-        "categories":allcategories,}
-        )
+                  {"listing": activelisting,
+                   "categories": allcategories, }
+                  )
+
 
 def displayCategory(request):
-    if request.method=="POST":
+    if request.method == "POST":
         categoryFromForm = request.POST['category']
-        category=Category.objects.get(categoryName=categoryFromForm)
-        allcategories=Category.objects.all()
-        activelisting=Listings.objects.filter(isactive=True,category=category)
+        category = Category.objects.get(categoryName=categoryFromForm)
+        allcategories = Category.objects.all()
+        activelisting = Listings.objects.filter(isactive=True, category=category)
         return render(request, "auctions/index.html",
-        { "listings":activelisting,
-            "categories":allcategories,}
-            )
-    
+                      {"listings": activelisting,
+                       "categories": allcategories, }
+                      )
+
 
 def createListings(request):
-    if request.method=="GET":
-        allcategories=Category.objects.all()
-        return render(request,"auctions/create.html",{
-            "categories":allcategories
-        })
-    
-    else:
-        title=request.POST["title"]
-        description=request.POST["description"]
-        imageurl=request.POST["imageurl"]
-        price=request.POST["price"]
-        category=request.POST["category"]
-
-        currentUser=request.user
-        categoryData=Category.objects.get(categoryName=category)
-        bid=Bid(bid=int(price),user=currentUser)
-        bid.save()
-
-
-        newListing=Listings(
-            title=title,
-            description=description,
-            imageurl=imageurl,
-            price=bid,
-            category=categoryData,
-            owner=currentUser
-        )
-
-        newListing.save()
-        return HttpResponseRedirect(reverse(index))
-
-
+    form = listForm()
+    if request.method == 'POST':
+        form = listForm(request.POST)
+        if form.is_valid:
+            obj = form.save(commit=False)
+            obj.user = request.user
+            obj.save()
+    return render(request, "auctions/create.html", context={
+        "form": form
+    })
 
 
 def login_view(request):
@@ -217,3 +213,11 @@ def register(request):
         return HttpResponseRedirect(reverse("index"))
     else:
         return render(request, "auctions/register.html")
+
+
+def showClosed(request):
+    list = Listings.objects.filter(isactive=False).all()
+    return render(request, "auctions/closedNav.html", context={
+        "listing":list
+    })
+
